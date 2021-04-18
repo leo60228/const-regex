@@ -3,6 +3,10 @@ name = "const-regex"
 version = "0.1.0"
 authors = ["leo60228 <leo@60228.dev>"]
 edition = "2018"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/leo60228/const-regex"
+description = "Match regexes inside a const fn"
+readme = "README.md"
 
 [lib]
 proc-macro = true

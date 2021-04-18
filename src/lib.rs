@@ -1,5 +1,3 @@
-//! # const-regex
-//!
 //! Proc macro to match regexes in const fns. The regex must be a string literal, but the bytes
 //! matched can be any value.
 //!
