@@ -1,7 +1,8 @@
-//use proc_macro2::TokenStream;
+use proc_macro2::TokenStream;
 use quote::quote;
 use regex_automata::{dense, DFA};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
+use std::ops::RangeInclusive;
 use syn::*;
 
 type RegexDfa = dense::Standard<Vec<usize>, usize>;
@@ -10,7 +11,16 @@ type RegexDfa = dense::Standard<Vec<usize>, usize>;
 pub enum State {
     Match,
     Dead,
-    Transitions(HashMap<usize, Vec<u8>>),
+    Transitions(HashMap<usize, BTreeSet<u8>>),
+}
+
+fn range_to_tokens(range: RangeInclusive<u8>) -> TokenStream {
+    let (start, end) = range.into_inner();
+    if start == end {
+        quote!(#start)
+    } else {
+        quote!(#start..=#end)
+    }
 }
 
 impl State {
@@ -24,7 +34,10 @@ impl State {
 
             for byte in 0..=255 {
                 let next = regex.next_state(state, byte);
-                transitions.entry(next).or_insert_with(Vec::new).push(byte);
+                transitions
+                    .entry(next)
+                    .or_insert_with(BTreeSet::new)
+                    .insert(byte);
             }
 
             Self::Transitions(transitions)
@@ -37,10 +50,27 @@ impl State {
             Self::Dead => parse_quote!(return false),
             Self::Transitions(transitions) => {
                 let branches = transitions.iter().map(|(target, bytes)| {
-                    quote! {
-                        #(#bytes)|* => #target
+                    let mut ranges = vec![];
+                    let mut range: Option<RangeInclusive<u8>> = None;
+                    for &byte in bytes {
+                        if let Some(range) = &mut range {
+                            if *range.end() == byte - 1 {
+                                *range = *range.start()..=byte;
+                                continue;
+                            } else {
+                                ranges.push(range_to_tokens(range.clone()));
+                            }
+                        }
+                        range = Some(byte..=byte);
                     }
+
+                    if let Some(range) = range {
+                        ranges.push(range_to_tokens(range));
+                    }
+
+                    quote!(#(#ranges)|* => #target)
                 });
+
                 parse_quote! {
                     match #byte {
                         #(#branches),*
@@ -101,7 +131,8 @@ impl Dfa {
 
                 state = match state {
                     #(#branches,)*
-                    _ => unreachable!()
+                    #[allow(unconditional_panic)]
+                    _ => [][0],
                 };
 
                 i += 1;
